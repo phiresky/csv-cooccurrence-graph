@@ -20,7 +20,7 @@ fn open_csv(path: &str) -> Result<CsvReader> {
     )))
 }
 
-fn get_metaexpressions<'a>(record: &'a StringRecord) -> impl Iterator<Item = &'a str> {
+fn get_tags<'a>(record: &'a StringRecord) -> impl Iterator<Item = &'a str> {
     // let tweet_year = &record[0];
     // let mex_num = &record[1];
     let emojis = &record[2];
@@ -41,7 +41,7 @@ fn read_nodes(mut csv: CsvReader) -> Result<IndexMap<String, i64, Fnv>> {
 
     let mut record = csv::StringRecord::new();
     while csv.read_record(&mut record)? {
-        for mex in get_metaexpressions(&record) {
+        for mex in get_tags(&record) {
             match nodes.get_mut(mex) {
                 Some(x) => *x += 1,
                 None => {
@@ -60,13 +60,13 @@ fn read_edges(
     let mut edges = HashMap::with_capacity_and_hasher(1000_000, Fnv::default());
     let mut record = csv::StringRecord::new();
     while csv.read_record(&mut record)? {
-        let mexes: Vec<_> = get_metaexpressions(&record)
-            .filter_map(|mex| nodes.get_index_of(mex))
+        let mexes: Vec<_> = get_tags(&record)
+            .filter_map(|mex| nodes.get_index_of(mex)) // remove nodes that we don't care about
             .collect();
 
         for (mut a, mut b) in mexes.iter().tuple_combinations() {
-            if a > b { // ensure same edge order
-                std::mem::swap(&mut a, &mut b);
+            if a > b {
+                std::mem::swap(&mut a, &mut b); // ensure same edge order
             }
             *(edges.entry((*a, *b)).or_default()) += 1;
         }
@@ -80,7 +80,6 @@ fn main() -> Result<()> {
         .next()
         .context("Supply csv as first argument")?;
     let mut nodes = read_nodes(open_csv(&path)?)?;
-    eprintln!("");
     eprintln!("total nodes: {}", nodes.len());
     nodes.retain(|_, v| *v >= min_to_retain_nodes);
     eprintln!("total nodes after filtering: {}", nodes.len());
