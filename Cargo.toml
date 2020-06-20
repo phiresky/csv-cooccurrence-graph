@@ -1,5 +1,5 @@
 [package]
-name = "irisnet-cooccurrence-test"
+name = "csv-cooccurrence-graph"
 version = "0.1.0"
 authors = ["phiresky <phireskyde+git@gmail.com>"]
 edition = "2018"

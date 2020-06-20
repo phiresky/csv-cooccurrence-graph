@@ -73,6 +73,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "csv-cooccurrence-graph"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "csv",
+ "fasthash",
+ "fnv",
+ "hashbrown",
+ "indexmap",
+ "indicatif",
+ "itertools",
+]
+
+[[package]]
 name = "csv-core"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -164,20 +178,6 @@ dependencies = [
  "regex",
  "unicode-segmentation",
  "unicode-width",
-]
-
-[[package]]
-name = "irisnet-cooccurrence-test"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "csv",
- "fasthash",
- "fnv",
- "hashbrown",
- "indexmap",
- "indicatif",
- "itertools",
 ]
 
 [[package]]
