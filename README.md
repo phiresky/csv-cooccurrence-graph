@@ -1,6 +1,12 @@
 Reads a CSV file containing a list of a list of tags (metaexpressiions) and outputs two csv files containing the co-occurrence counts of each pair of tags.
 
-Takes around 40 seconds per GByte of data.
+Processes 900k lines per second, single threaded (takes around 40 seconds per GByte of data).
+
+Run using
+
+```
+cargo run --release meta-expressions.csv
+```
 
 ## Example
 
