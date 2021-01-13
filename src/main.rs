@@ -61,6 +61,65 @@ struct Tag {
     dataset_flag: DatasetType,
 }
 
+fn debugemoji(str: &str) {
+    println!("debug emoji {} ({:?}):", str, str);
+    for char in str.chars() {
+        println!(
+            "debug emoji part: {:?}: {:?}",
+            char,
+            unic_ucd::Name::of(char)
+        );
+    }
+}
+
+fn is_char_interesting(char: &char) -> bool {
+    let info = unic_ucd::GeneralCategory::of(*char);
+    use unic_ucd::GeneralCategory::*;
+    /* if char == '\u{200d}' {
+        println!("right of zws: {:?}", emoji.chars().skip(i).join(""));
+    }*/
+
+    match info {
+        /*Format if char == '\u{200d}' => {},
+        Format  => {
+            println!("format {} emojis char {:?} unknown:", emoji, char);
+            debugemoji(&emoji);
+        }*/
+        OtherSymbol | OtherPunctuation | MathSymbol | DashPunctuation | LowercaseLetter
+        | Format => true,
+        NonspacingMark | ModifierSymbol | ModifierLetter | EnclosingMark | SpacingMark
+        | Unassigned | OtherLetter => {
+            // non spacing marks and modifier symbols are normal modifiers like skin tone
+            // 🦳 = unassigned
+            false
+        }
+        _ => {
+            /*println!(
+                "info of {}th char of emoji '{}': {:?}: {:?}",
+                i, emoji, char, info
+            );*/
+            // debugemoji(&emoji);
+            panic!("what dis {:?}: {:?}", char, info);
+        }
+    }
+}
+
+fn clean_emoji(emoji: &str) -> Option<String> {
+    if emoji.len() == 0 {
+        return None;
+    }
+    let emoji = emoji
+        .replace("\u{200d}♂\u{fe0f}", "")
+        .replace("\u{200d}♀\u{fe0f}", "");
+    // println!("chars in emoji {}:", emoji);
+    let emoji = emoji.chars().filter(is_char_interesting).join("");
+    if emoji.len() == 0 {
+        None
+    } else {
+        Some(emoji.to_string())
+    }
+}
+
 fn get_tags<'a>(record: &'a StringRecord) -> impl Iterator<Item = Tag> + 'a {
     let tweet_year = &record[0];
     let dataset_flag = if tweet_year.parse::<i32>().unwrap() >= 2018 {
@@ -73,11 +132,14 @@ fn get_tags<'a>(record: &'a StringRecord) -> impl Iterator<Item = Tag> + 'a {
     let emoticons = &record[3];
     let hashtags = &record[4];
 
-    let emoji_tags = emojis.split(" ").map(move |value| Tag {
-        text: value.to_owned(),
-        expression_type: TagType::Emoji,
-        dataset_flag,
-    });
+    let emoji_tags = emojis
+        .split(" ")
+        .filter_map(clean_emoji)
+        .map(move |value| Tag {
+            text: value,
+            expression_type: TagType::Emoji,
+            dataset_flag,
+        });
 
     let emoticons_tags = emoticons.split(" ").map(move |value| Tag {
         text: value.to_owned(),
