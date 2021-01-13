@@ -6,6 +6,7 @@ use indicatif::{ProgressBar, ProgressBarWrap, ProgressStyle};
 use itertools::Itertools;
 use std::fs::File;
 use std::{collections::HashMap, io::BufReader};
+use structopt::StructOpt;
 
 type CsvReader = csv::Reader<BufReader<ProgressBarWrap<File>>>;
 
@@ -72,6 +73,32 @@ fn debugemoji(str: &str) {
     }
 }
 
+fn load_emoticon_emoji_mapping() -> HashMap<String, String> {
+    let emoticon_emoji_map = include_str!("../emoticon_emoji_mapping.json");
+    let emoticon_emoji_map =
+        serde_json::from_str(emoticon_emoji_map).expect("Parsing of map json failed");
+
+    return emoticon_emoji_map;
+}
+
+fn replace_emoticon_by_emoji(
+    emoticon: &str,
+    emoticon_emoji_map: &HashMap<String, String>,
+    dataset_flag: DatasetType,
+) -> Option<Tag> {
+    return match emoticon_emoji_map.get(emoticon) {
+        Some(emoji) => Some(Tag {
+            text: emoji.to_owned(),
+            expression_type: TagType::Emoji,
+            dataset_flag,
+        }),
+        None => {
+            println!("Emoticon {} has no corresponding emoji", emoticon);
+            None
+        }
+    };
+}
+
 fn is_char_interesting(char: &char) -> bool {
     let info = unic_ucd::GeneralCategory::of(*char);
     use unic_ucd::GeneralCategory::*;
@@ -120,7 +147,11 @@ fn clean_emoji(emoji: &str) -> Option<String> {
     }
 }
 
-fn get_tags<'a>(record: &'a StringRecord) -> impl Iterator<Item = Tag> + 'a {
+fn get_tags<'a>(
+    record: &'a StringRecord,
+    emoticon_emoji_map: &HashMap<String, String>,
+    replace_emoticons_and_ignore_hashtags: bool,
+) -> impl Iterator<Item = Tag> + 'a {
     let tweet_year = &record[0];
     let dataset_flag = if tweet_year.parse::<i32>().unwrap() >= 2018 {
         IrisData
@@ -141,19 +172,38 @@ fn get_tags<'a>(record: &'a StringRecord) -> impl Iterator<Item = Tag> + 'a {
             dataset_flag,
         });
 
-    let emoticons_tags = emoticons.split(" ").map(move |value| Tag {
-        text: value.to_owned(),
-        expression_type: TagType::Emoticon,
-        dataset_flag,
-    });
-    let hashtags_tags = hashtags.split(" ").map(move |value| Tag {
-        text: value.to_owned(),
-        expression_type: TagType::Hashtag,
-        dataset_flag,
-    });
+    let emoticons_tags = emoticons
+        .split(" ")
+        .filter(|x| !x.is_empty())
+        .map(move |value| Tag {
+            text: value.to_owned(),
+            expression_type: TagType::Emoticon,
+            dataset_flag,
+        });
+
+    let emoticons: Vec<Tag> = if replace_emoticons_and_ignore_hashtags {
+        emoticons_tags
+            .filter_map(|x| replace_emoticon_by_emoji(&x.text, &emoticon_emoji_map, x.dataset_flag))
+            .collect()
+    } else {
+        emoticons_tags.collect()
+    };
+
+    let hashtags_tags: Vec<Tag> = if replace_emoticons_and_ignore_hashtags {
+        hashtags
+            .split(" ")
+            .map(move |value| Tag {
+                text: value.to_owned(),
+                expression_type: TagType::Hashtag,
+                dataset_flag,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     emoji_tags
-        .chain(emoticons_tags)
+        .chain(emoticons)
         .chain(hashtags_tags)
         .filter(|e| e.text.len() > 0) // filter out empty strings
 }
@@ -163,7 +213,11 @@ const min_to_retain_edges: i64 = 3;
 
 type NodeMap = IndexMap<Tag, i64, Fnv>;
 
-fn read_nodes(mut csv: CsvReader) -> Result<NodeMap> {
+fn read_nodes(
+    mut csv: CsvReader,
+    emoticon_emoji_map: &HashMap<String, String>,
+    replace_emoticons_and_ignore_hashtags: bool,
+) -> Result<NodeMap> {
     let mut nodes: IndexMap<Tag, i64, Fnv> =
         IndexMap::with_capacity_and_hasher(1000_000, Fnv::default());
 
@@ -173,7 +227,11 @@ fn read_nodes(mut csv: CsvReader) -> Result<NodeMap> {
         .read_record(&mut record)
         .context("reading record from csv")?
     {
-        for mex in get_tags(&record) {
+        for mex in get_tags(
+            &record,
+            &emoticon_emoji_map,
+            replace_emoticons_and_ignore_hashtags,
+        ) {
             match nodes.get_mut(&mex) {
                 Some(x) => *x += 1,
                 None => {
@@ -185,13 +243,22 @@ fn read_nodes(mut csv: CsvReader) -> Result<NodeMap> {
     Ok(nodes)
 }
 
-fn read_edges(mut csv: CsvReader, nodes: &NodeMap) -> Result<FnvHashMap<(usize, usize), i64>> {
+fn read_edges(
+    mut csv: CsvReader,
+    nodes: &NodeMap,
+    emoticon_emoji_map: &HashMap<String, String>,
+    replace_emoticons_and_ignore_hashtags: bool,
+) -> Result<FnvHashMap<(usize, usize), i64>> {
     let mut edges = HashMap::with_capacity_and_hasher(1000_000, Fnv::default());
     let mut record = csv::StringRecord::new();
     while csv.read_record(&mut record)? {
-        let mexes: Vec<_> = get_tags(&record)
-            .filter_map(|mex| nodes.get_index_of(&mex)) // remove nodes that we don't care about
-            .collect();
+        let mexes: Vec<_> = get_tags(
+            &record,
+            &emoticon_emoji_map,
+            replace_emoticons_and_ignore_hashtags,
+        )
+        .filter_map(|mex| nodes.get_index_of(&mex)) // remove nodes that we don't care about
+        .collect();
 
         for (mut a, mut b) in mexes.iter().tuple_combinations() {
             if a > b {
@@ -203,14 +270,26 @@ fn read_edges(mut csv: CsvReader, nodes: &NodeMap) -> Result<FnvHashMap<(usize, 
     Ok(edges)
 }
 
+#[derive(StructOpt)]
+struct Args {
+    /// The input csv path
+    path: String,
+    #[structopt(short, long)]
+    /// If true, replace emoticons with a somewhat corresponding emoji, and remove all hashtags
+    replace_emoticons_and_ignore_hashtags: bool,
+}
+
 fn main() -> Result<()> {
-    let path = std::env::args()
-        .skip(1)
-        .next()
-        .context("Supply csv as first argument")?;
+    let emoticon_emoji_map = load_emoticon_emoji_mapping();
+
+    let args = Args::from_args();
 
     let nodes = {
-        let mut nodes = read_nodes(open_csv(&path)?)?;
+        let mut nodes = read_nodes(
+            open_csv(&args.path)?,
+            &emoticon_emoji_map,
+            args.replace_emoticons_and_ignore_hashtags,
+        )?;
         eprintln!("total nodes: {}", nodes.len());
 
         nodes.retain(|_, v| *v >= min_to_retain_nodes);
@@ -242,7 +321,12 @@ fn main() -> Result<()> {
         }
     }
 
-    let mut edges = read_edges(open_csv(&path)?, &nodes)?;
+    let mut edges = read_edges(
+        open_csv(&args.path)?,
+        &nodes,
+        &emoticon_emoji_map,
+        args.replace_emoticons_and_ignore_hashtags,
+    )?;
 
     eprintln!("total edges: {}", edges.len());
     edges.retain(|_, v| *v >= min_to_retain_edges);

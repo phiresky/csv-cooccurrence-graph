@@ -8,6 +8,13 @@ Run using
 cargo run --release meta-expressions.csv
 ```
 
+If you want to denoise the dataset by mapping emoticons to emojis and filtering out hashtags, run 
+
+```
+cargo run --release meta-expressions.csv -r replace_emoticons_and_ignore_hashtags
+```
+
+
 ## Example
 
 
