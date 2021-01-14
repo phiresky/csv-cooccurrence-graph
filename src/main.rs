@@ -39,27 +39,10 @@ impl TagType {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum DatasetType {
-    IrisData,
-    Auxiliary,
-}
-impl DatasetType {
-    fn as_str(&self) -> &'static str {
-        match self {
-            IrisData => "0",
-            Auxiliary => "1",
-        }
-    }
-}
-
-use DatasetType::*;
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Tag {
     text: String,
     expression_type: TagType,
-    dataset_flag: DatasetType,
 }
 
 fn debugemoji(str: &str) {
@@ -84,13 +67,11 @@ fn load_emoticon_emoji_mapping() -> HashMap<String, String> {
 fn replace_emoticon_by_emoji(
     emoticon: &str,
     emoticon_emoji_map: &HashMap<String, String>,
-    dataset_flag: DatasetType,
 ) -> Option<Tag> {
     return match emoticon_emoji_map.get(emoticon) {
         Some(emoji) => Some(Tag {
             text: emoji.to_owned(),
             expression_type: TagType::Emoji,
-            dataset_flag,
         }),
         None => {
             println!("Emoticon {} has no corresponding emoji", emoticon);
@@ -153,11 +134,7 @@ fn get_tags<'a>(
     replace_emoticons_and_ignore_hashtags: bool,
 ) -> impl Iterator<Item = Tag> + 'a {
     let tweet_year = &record[0];
-    let dataset_flag = if tweet_year.parse::<i32>().unwrap() >= 2018 {
-        IrisData
-    } else {
-        Auxiliary
-    };
+
     // let mex_num = &record[1];
     let emojis = &record[2];
     let emoticons = &record[3];
@@ -169,7 +146,6 @@ fn get_tags<'a>(
         .map(move |value| Tag {
             text: value,
             expression_type: TagType::Emoji,
-            dataset_flag,
         });
 
     let emoticons_tags = emoticons
@@ -178,12 +154,11 @@ fn get_tags<'a>(
         .map(move |value| Tag {
             text: value.to_owned(),
             expression_type: TagType::Emoticon,
-            dataset_flag,
         });
 
     let emoticons: Vec<Tag> = if replace_emoticons_and_ignore_hashtags {
         emoticons_tags
-            .filter_map(|x| replace_emoticon_by_emoji(&x.text, &emoticon_emoji_map, x.dataset_flag))
+            .filter_map(|x| replace_emoticon_by_emoji(&x.text, &emoticon_emoji_map))
             .collect()
     } else {
         emoticons_tags.collect()
@@ -195,7 +170,6 @@ fn get_tags<'a>(
             .map(move |value| Tag {
                 text: value.to_owned(),
                 expression_type: TagType::Hashtag,
-                dataset_flag,
             })
             .collect()
     } else {
@@ -309,11 +283,10 @@ fn main() -> Result<()> {
         // node_type text NOT NULL,
         // node text NOT NULL,
         // weight integer NOT NULL,
-        f.write_record(&["node_id", "dataset_flag", "node_type", "node", "weight"])?;
+        f.write_record(&["node_id", "node_type", "node", "weight"])?;
         for (node_id, (tag, weight)) in nodes_sorted {
             f.write_record(&[
                 (node_id + 1).to_string().as_str(),
-                tag.dataset_flag.as_str(),
                 tag.expression_type.as_str(),
                 &tag.text,
                 &weight.to_string(),
@@ -343,22 +316,12 @@ fn main() -> Result<()> {
         // node_1 biginteger NOT NULL,
         // node_2 biginteger NOT NULL,
         // weight real NOT NULL,
-        f.write_record(&["dataset_flag", "node_1", "node_2", "weight"])?;
+        f.write_record(&["node_1", "node_2", "weight"])?;
         for ((inx_1, inx_2), v) in edges_sorted {
             let (tag, _) = nodes.get_index(inx_1).unwrap();
             let (tag2, _) = nodes.get_index(inx_2).unwrap();
 
-            if tag.dataset_flag != tag2.dataset_flag {
-                eprintln!(
-                    "dataset_flag is not the same for {} and {}",
-                    tag.text, tag2.text
-                );
-            }
-
-            let dataset_flag = tag.dataset_flag;
-
             f.write_record(&[
-                dataset_flag.as_str(),
                 &(inx_1 + 1).to_string(),
                 &(inx_2 + 1).to_string(),
                 &v.to_string(),
