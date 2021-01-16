@@ -165,15 +165,15 @@ fn get_tags<'a>(
     };
 
     let hashtags_tags: Vec<Tag> = if replace_emoticons_and_ignore_hashtags {
-        hashtags
-            .split(" ")
-            .map(move |value| Tag {
-                text: value.to_owned(),
-                expression_type: TagType::Hashtag,
-            })
-            .collect()
+        Vec::new() 
     } else {
-        Vec::new()
+       hashtags
+        .split(" ")
+        .map(move |value| Tag {
+            text: value.to_owned(),
+            expression_type: TagType::Hashtag,
+        })
+        .collect()
     };
 
     emoji_tags
