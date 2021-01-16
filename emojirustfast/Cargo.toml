@@ -1,0 +1,13 @@
+[package]
+name = "emojirustfast"
+version = "0.1.0" 
+edition = "2018"
+
+[lib]
+name = "emojirustfast"
+crate-type = ["dylib"]
+
+[dependencies]
+cpython = { version = "0.5.2", features = ["extension-module"] }
+itertools = "0.10.0"
+unic-ucd = "0.9.0"
